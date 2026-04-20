@@ -1,56 +1,44 @@
 // ============================================================
 //  31stFile Newsletter — Weekly Broadcast System
 //  ──────────────────────────────────────────────────────────
-//  This is a SEPARATE Apps Script file (or a second file in the
-//  same project) that sends weekly newsletters to all subscribers.
+//  Credentials are read from Script Properties (secrets vault).
+//  Same 3 Script Properties used by google-apps-script.js:
+//    ZOHO_EMAIL         → partner@31stfile.com
+//    ZOHO_APP_PASSWORD  → your Zoho app-specific password
+//    ZOHO_ACCOUNT_ID    → numeric ID from mail.zoho.com/api/accounts
 //
-//  SETUP:
-//  1. Open your existing Apps Script project (the one with doPost)
-//  2. Click "+" next to Files → New script file → name it "broadcast"
-//  3. Paste this entire file there
-//  4. Fill in BROADCAST_CONFIG below
-//  5. Set a time trigger:
-//       Triggers (clock icon) → Add Trigger
-//       Function: sendWeeklyNewsletter
-//       Event source: Time-driven → Week timer → Every Monday → 7-8 AM
+//  SCHEDULE SETUP:
+//    Triggers (clock icon) → Add Trigger
+//    Function: sendWeeklyNewsletter
+//    Event source: Time-driven → Week timer → Every Monday → 7-8 AM
 // ============================================================
 
+const ZOHO_REGION_BC   = 'mail.zoho.com'; // change to mail.zoho.in if needed
+const FROM_NAME_BC     = '31stFile Compliance Weekly';
+const SHEET_NAME_BC    = '31stFile Subscribers';
+const LOG_SHEET_NAME   = 'Broadcast Log';
+const BATCH_LIMIT      = 200; // emails per run
 
-// ──────────────────────────────────────────────────────────────
-//  BROADCAST CONFIGURATION  ← fill in before first send
-// ──────────────────────────────────────────────────────────────
-const BROADCAST_CONFIG = {
-  // Same credentials as your subscriber script
-  ZOHO_API_TOKEN:  'YOUR_ZOHO_MAIL_API_TOKEN_HERE',   // same token as before
-  ZOHO_FROM_EMAIL: 'partner@31stfile.com',
-  ZOHO_FROM_NAME:  '31stFile Compliance Weekly',
-  ZOHO_ACCOUNT_ID: 'YOUR_ZOHO_ACCOUNT_ID_HERE',
-  ZOHO_REGION:     'mail.zoho.com',
+// Column positions in subscriber sheet (1-indexed)
+const COL_EMAIL_BC  = 3; // Column C
+const COL_NAME_BC   = 2; // Column B
+const COL_STATUS_BC = 7; // Column G (Active / unsubscribed)
 
-  // Google Sheet tab with subscribers
-  SHEET_NAME: '31stFile Subscribers',
-
-  // Column positions in the sheet (1-indexed)
-  COL_EMAIL:  3,   // Column C: Email
-  COL_NAME:   2,   // Column B: Name
-  COL_STATUS: 7,   // Column G: Active/Unsubscribed (auto-created)
-
-  // Max emails per run (Zoho free: unlimited, but keep below 500/day to be safe)
-  BATCH_LIMIT: 200,
-
-  // Email log tab name (tracks every broadcast sent)
-  LOG_SHEET_NAME: 'Broadcast Log',
-};
-// ──────────────────────────────────────────────────────────────
+// Helper: read from Script Properties
+function getBroadcastSecret(key) {
+  const val = PropertiesService.getScriptProperties().getProperty(key);
+  if (!val) throw new Error(`Script Property "${key}" is not set.`);
+  return val;
+}
 
 
 // ── MAIN: Send weekly newsletter to all active subscribers ─────
 function sendWeeklyNewsletter() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(BROADCAST_CONFIG.SHEET_NAME);
+  const sheet = ss.getSheetByName(SHEET_NAME_BC);
 
   if (!sheet) {
-    Logger.log('❌ Subscriber sheet not found: ' + BROADCAST_CONFIG.SHEET_NAME);
+    Logger.log('❌ Subscriber sheet not found: ' + SHEET_NAME_BC);
     return;
   }
 
@@ -72,11 +60,11 @@ function sendWeeklyNewsletter() {
   let sent = 0, skipped = 0, failed = 0;
   const errors = [];
 
-  for (let i = 0; i < data.length && sent < BROADCAST_CONFIG.BATCH_LIMIT; i++) {
-    const row = data[i];
-    const name    = row[BROADCAST_CONFIG.COL_NAME - 1]   || 'Subscriber';
-    const email   = row[BROADCAST_CONFIG.COL_EMAIL - 1];
-    const status  = String(row[BROADCAST_CONFIG.COL_STATUS - 1]).toLowerCase();
+  for (let i = 0; i < data.length && sent < BATCH_LIMIT; i++) {
+    const row    = data[i];
+    const name   = row[COL_NAME_BC - 1]   || 'Subscriber';
+    const email  = row[COL_EMAIL_BC - 1];
+    const status = String(row[COL_STATUS_BC - 1]).toLowerCase();
 
     // Skip empty emails or unsubscribed users
     if (!email || status === 'unsubscribed') {
@@ -106,23 +94,30 @@ function sendWeeklyNewsletter() {
 function sendNewsletterEmail(name, email, newsletter) {
   const firstName = name ? String(name).split(' ')[0] : 'there';
   const htmlBody  = newsletter.htmlBody.replace(/\{\{firstName\}\}/g, firstName);
+  const textBody  = newsletter.textBody.replace(/\{\{firstName\}\}/g, firstName);
 
-  const url = `https://${BROADCAST_CONFIG.ZOHO_REGION}/api/accounts/${BROADCAST_CONFIG.ZOHO_ACCOUNT_ID}/messages`;
+  // Read credentials from Script Properties (never hardcoded)
+  const zohoEmail     = getBroadcastSecret('ZOHO_EMAIL');
+  const zohoAppPass   = getBroadcastSecret('ZOHO_APP_PASSWORD');
+  const zohoAccountId = getBroadcastSecret('ZOHO_ACCOUNT_ID');
+  const basicAuth     = Utilities.base64Encode(`${zohoEmail}:${zohoAppPass}`);
+
+  const url = `https://${ZOHO_REGION_BC}/api/accounts/${zohoAccountId}/messages`;
 
   const payload = {
-    fromAddress: BROADCAST_CONFIG.ZOHO_FROM_EMAIL,
+    fromAddress: zohoEmail,
     toAddress:   email,
     subject:     newsletter.subject,
     mailFormat:  'html',
     content:     htmlBody,
-    textBody:    newsletter.textBody.replace(/\{\{firstName\}\}/g, firstName),
+    textBody:    textBody,
     askReceipt:  'no'
   };
 
   const options = {
     method: 'POST',
     contentType: 'application/json',
-    headers: { 'Authorization': 'Zoho-oauthtoken ' + BROADCAST_CONFIG.ZOHO_API_TOKEN },
+    headers: { 'Authorization': `Basic ${basicAuth}` },
     payload: JSON.stringify(payload),
     muteHttpExceptions: true
   };
@@ -136,9 +131,9 @@ function sendNewsletterEmail(name, email, newsletter) {
 
 // ── Log broadcast results to a sheet ──────────────────────────
 function logBroadcast(ss, subject, sent, skipped, failed, errors) {
-  let logSheet = ss.getSheetByName(BROADCAST_CONFIG.LOG_SHEET_NAME);
+  let logSheet = ss.getSheetByName(LOG_SHEET_NAME);
   if (!logSheet) {
-    logSheet = ss.insertSheet(BROADCAST_CONFIG.LOG_SHEET_NAME);
+    logSheet = ss.insertSheet(LOG_SHEET_NAME);
     logSheet.appendRow(['Date', 'Subject', 'Sent', 'Skipped', 'Failed', 'Errors']);
     logSheet.getRange(1, 1, 1, 6).setFontWeight('bold');
     logSheet.setFrozenRows(1);
