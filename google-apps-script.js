@@ -1,94 +1,71 @@
 // ============================================================
 //  31stFile Newsletter — Google Apps Script Backend (COMPLETE)
 //  ──────────────────────────────────────────────────────────
-//  HOW TO USE:
-//  Step 1 → Select "setupMySecrets"   → click Run  (do once)
-//  Step 2 → Select "testWelcomeEmail" → click Run  (verify it works)
-//  Step 3 → Deploy as Web App (New Version) → done!
+//  SETUP (do these once):
+//  1. Select "setupMySecrets"   → Run  (saves all credentials)
+//  2. Select "testWelcomeEmail" → Run  (confirms email works)
+//  3. Add a daily trigger:
+//       Triggers (clock icon) → Add Trigger
+//       Function: dailyHealthCheck
+//       Time-driven → Day timer → 8–9 AM
 // ============================================================
 
 const SHEET_NAME     = '31stFile Subscribers';
 const ZOHO_REGION    = 'mail.zoho.in';
 const ZOHO_API_URL   = 'https://mail.zoho.in';
-// ✅ Direct link to your Google Sheet — needed for standalone scripts
 const SPREADSHEET_ID = '1edVQEgcpz6xMu8yMLuUMCKIFWaPVXAapMpUfsum7tT0';
 
-// ── STEP 1: Run this ONCE to save all credentials ─────────────
+
+// ── STEP 1: Set credentials manually in Script Properties ─────
+//
+//  ⚠️  DO NOT paste credentials into this code file.
+//  This file is on GitHub (public). Credentials go in Script Properties only.
+//
+//  HOW TO SET CREDENTIALS:
+//  1. In Apps Script → click ⚙️ gear icon → "Project Settings"
+//  2. Scroll to "Script Properties" → "Add script property"
+//  3. Add each key-value pair below:
+//
+//  Key                  | Value
+//  ─────────────────────────────────────────────────────────────
+//  ZOHO_EMAIL           | partner@31stfile.com
+//  ZOHO_ACCOUNT_ID      | 1149820000000002002
+//  ZOHO_ACCESS_TOKEN    | (new token from api-console.zoho.in)
+//  ZOHO_REFRESH_TOKEN   | (new token from api-console.zoho.in)
+//  ZOHO_CLIENT_ID       | (your client ID from api-console.zoho.in)
+//  ZOHO_CLIENT_SECRET   | (new secret after regenerating)
+//
+//  Run this function to verify your properties are saved correctly:
 function setupMySecrets() {
-  PropertiesService.getScriptProperties().setProperties({
-    'ZOHO_EMAIL':         'partner@31stfile.com',
-    'ZOHO_ACCOUNT_ID':    '1149820000000002002',
-    'ZOHO_ACCESS_TOKEN':  '1000.0edb24411ba6516ca0acc72fc197ba74.ad2425e007ed841e4029beead1b67d05',
-    'ZOHO_REFRESH_TOKEN': '1000.c4ad2b0f1b712791639f7902d9c1c7ba.1b5d628e9512764e48074f654e1c6187',
-    'ZOHO_CLIENT_ID':     '1000.42SLEGBL0CR4ZJIMGL1A9RNZP8FXEY',
-    'ZOHO_CLIENT_SECRET': 'a67ce77388ba1b3b02b1dc89073c1497d11f147519'
-  });
-  Logger.log('✅ Credentials saved!');
-  Logger.log('Sheet ID in use: ' + SPREADSHEET_ID);
-  // Quick test: verify we can open the sheet
-  try {
-    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    Logger.log('✅ Sheet connected: ' + ss.getName());
-  } catch(e) {
-    Logger.log('❌ Sheet connection failed: ' + e.toString());
-  }
-}
-
-// ── STEP 2: Run this ONCE to auto-detect your real Account ID ─
-// Uses a different endpoint that only needs messages.CREATE scope
-function findAndSaveAccountId() {
-  try {
-    const token = getAccessToken();
-
-    // Try fetching folders — this endpoint works with messages.CREATE scope
-    // and returns the accountId in the URL structure
-    const res = UrlFetchApp.fetch(ZOHO_API_URL + '/api/accounts/self', {
-      headers: { 'Authorization': 'Zoho-oauthtoken ' + token },
-      muteHttpExceptions: true
-    });
-    Logger.log('Self endpoint response: ' + res.getContentText());
-
-    const json = JSON.parse(res.getContentText());
-
-    // Try to extract accountId from various response formats
-    let accountId = null;
-    if (json.data && json.data.accountId) {
-      accountId = json.data.accountId;
-    } else if (json.accountId) {
-      accountId = json.accountId;
-    }
-
-    if (accountId) {
-      PropertiesService.getScriptProperties().setProperty('ZOHO_ACCOUNT_ID', accountId);
-      Logger.log('✅ Found and saved Account ID: ' + accountId);
-      Logger.log('Now run "testWelcomeEmail".');
+  const required = [
+    'ZOHO_EMAIL', 'ZOHO_ACCOUNT_ID', 'ZOHO_ACCESS_TOKEN',
+    'ZOHO_REFRESH_TOKEN', 'ZOHO_CLIENT_ID', 'ZOHO_CLIENT_SECRET'
+  ];
+  const props = PropertiesService.getScriptProperties().getProperties();
+  let allGood = true;
+  required.forEach(key => {
+    if (props[key]) {
+      Logger.log('✅ ' + key + ' is set.');
     } else {
-      // If auto-detection fails, guide user to find it manually
-      Logger.log('⚠️ Auto-detection did not work. Full response: ' + res.getContentText());
-      Logger.log('');
-      Logger.log('MANUAL STEPS to find your Account ID:');
-      Logger.log('1. Open https://mail.zoho.in in your browser (while logged in)');
-      Logger.log('2. Open browser DevTools → Network tab → refresh the page');
-      Logger.log('3. Look for any API request URL containing /api/accounts/XXXXXXXXX/');
-      Logger.log('4. The long number in that URL is your Account ID');
-      Logger.log('5. Run setAccountIdManually("PASTE_ID_HERE") with that number');
+      Logger.log('❌ ' + key + ' is MISSING — add it in Project Settings → Script Properties.');
+      allGood = false;
     }
-  } catch (e) {
-    Logger.log('❌ Error: ' + e.toString());
+  });
+  if (allGood) {
+    Logger.log('');
+    Logger.log('✅ All credentials found! Testing sheet connection...');
+    try {
+      const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+      Logger.log('✅ Sheet connected: ' + ss.getName());
+      Logger.log('Now run "testWelcomeEmail" to confirm emails work.');
+    } catch(e) {
+      Logger.log('❌ Sheet connection failed: ' + e.toString());
+    }
   }
 }
 
-// ── Run this if you found your Account ID manually ────────────
-function setAccountIdManually(id) {
-  if (!id) {
-    Logger.log('⚠️ Pass your account ID: setAccountIdManually("YOUR_ID_HERE")');
-    return;
-  }
-  PropertiesService.getScriptProperties().setProperty('ZOHO_ACCOUNT_ID', id);
-  Logger.log('✅ Account ID saved: ' + id + '. Now run testWelcomeEmail.');
-}
 
-// ── STEP 3: Run this to test email only ───────────────────────
+// ── STEP 2: Test email only ───────────────────────────────────
 function testWelcomeEmail() {
   try {
     sendWelcomeEmail('Test User', getSecret('ZOHO_EMAIL'));
@@ -98,39 +75,82 @@ function testWelcomeEmail() {
   }
 }
 
-// ── STEP 4: Run this to test the FULL flow (sheet + email) ────
-// This simulates exactly what happens when someone submits the form
+
+// ── STEP 3: Test full flow (sheet + email together) ───────────
 function testFullFlow() {
   const fakeEvent = {
     postData: {
       contents: JSON.stringify({
         name:      'Test Subscriber',
-        email:     'test_' + Date.now() + '@example.com', // unique so it's never duplicate
+        email:     'test_' + Date.now() + '@example.com',
         company:   'Test Company',
         timestamp: new Date().toISOString()
       })
     }
   };
-
   Logger.log('Simulating a form submission...');
   const result = doPost(fakeEvent);
-  Logger.log('doPost result: ' + result.getContent());
-  Logger.log('✅ Check your Google Sheet — a new row should appear!');
+  Logger.log('Result: ' + result.getContent());
+  Logger.log('✅ Check your Google Sheet for the new row!');
 }
+
+
+// ── DAILY HEALTH CHECK ────────────────────────────────────────
+// Set a trigger: Triggers → Add Trigger → dailyHealthCheck
+//   → Time-driven → Day timer → 8-9 AM
+//
+// Checks if the last welcome email failed and emails you a warning.
+// This protects you if the Zoho token ever expires.
+function dailyHealthCheck() {
+  try {
+    const sheet = SpreadsheetApp.openById(SPREADSHEET_ID)
+                                .getSheetByName(SHEET_NAME);
+    if (!sheet || sheet.getLastRow() < 2) return; // no subscribers yet
+
+    // Check the last few rows for email errors
+    const lastRow = sheet.getLastRow();
+    const checkRows = Math.min(5, lastRow - 1);
+    const statuses = sheet.getRange(lastRow - checkRows + 1, 6, checkRows, 1)
+                          .getValues().flat();
+
+    const hasError = statuses.some(s => String(s).startsWith('Error') || String(s).startsWith('Err'));
+
+    if (hasError) {
+      MailApp.sendEmail({
+        to:      'partner@31stfile.com',
+        subject: '⚠️ 31stFile Newsletter — Zoho Email Sending Failed',
+        body:    'The Zoho welcome email is failing for new subscribers.\n\n' +
+                 'Latest statuses: ' + statuses.join(', ') + '\n\n' +
+                 'WHAT TO DO:\n' +
+                 '1. Go to api-console.zoho.in → Self Client → Generate Code\n' +
+                 '2. Exchange for new tokens\n' +
+                 '3. Update ZOHO_ACCESS_TOKEN and ZOHO_REFRESH_TOKEN in Script Properties\n' +
+                 '4. Run setupMySecrets() again\n\n' +
+                 'Sheet: https://docs.google.com/spreadsheets/d/' + SPREADSHEET_ID
+      });
+      Logger.log('⚠️ Error detected — warning email sent to partner@31stfile.com');
+    } else {
+      Logger.log('✅ Daily health check passed — all recent emails sent successfully.');
+    }
+  } catch (e) {
+    Logger.log('❌ Health check error: ' + e.toString());
+  }
+}
+
 
 // ── Helper: read a credential from Script Properties ──────────
 function getSecret(key) {
   const val = PropertiesService.getScriptProperties().getProperty(key);
-  if (!val) throw new Error('Missing "' + key + '" — please run setupMySecrets() first.');
+  if (!val) throw new Error('Missing "' + key + '" — run setupMySecrets() first.');
   return val;
 }
 
-// ── Get a valid access token (auto-refreshes if expired) ───────
+
+// ── Get valid access token (auto-refreshes if expired) ─────────
 function getAccessToken() {
-  // Try current token first
   const token = getSecret('ZOHO_ACCESS_TOKEN');
 
-  // Quick validity check by testing a lightweight API call
+  // Quick validity check
   const testRes = UrlFetchApp.fetch(
     ZOHO_API_URL + '/api/accounts/' + getSecret('ZOHO_ACCOUNT_ID'),
     {
@@ -139,13 +159,13 @@ function getAccessToken() {
     }
   );
 
-  // If token is still valid, return it
   if (testRes.getResponseCode() === 200) return token;
 
-  // Token expired — use refresh token to get a new one
+  // Token expired — refresh it
   Logger.log('Access token expired, refreshing...');
   return refreshAccessToken();
 }
+
 
 // ── Refresh the access token using the refresh token ──────────
 function refreshAccessToken() {
@@ -156,12 +176,14 @@ function refreshAccessToken() {
     grant_type:    'refresh_token'
   };
 
-  const query = Object.keys(params).map(k => k + '=' + encodeURIComponent(params[k])).join('&');
+  const query = Object.keys(params)
+    .map(k => k + '=' + encodeURIComponent(params[k]))
+    .join('&');
 
   const res = UrlFetchApp.fetch('https://accounts.zoho.in/oauth/v2/token', {
-    method: 'POST',
+    method:      'POST',
     contentType: 'application/x-www-form-urlencoded',
-    payload: query,
+    payload:     query,
     muteHttpExceptions: true
   });
 
@@ -170,21 +192,20 @@ function refreshAccessToken() {
     throw new Error('Token refresh failed: ' + res.getContentText());
   }
 
-  // Save the new access token
   PropertiesService.getScriptProperties().setProperty('ZOHO_ACCESS_TOKEN', data.access_token);
   Logger.log('✅ Access token refreshed successfully.');
   return data.access_token;
 }
 
-// ── Main POST handler (called when landing page form submits) ──
+
+// ── Main POST handler (called when form is submitted) ──────────
 function doPost(e) {
   try {
-    const data = JSON.parse(e.postData.contents);
-    // ✅ FIXED: use openById() — getActiveSpreadsheet() returns null in web app context
-    const ss   = SpreadsheetApp.openById(SPREADSHEET_ID);
-    let sheet  = ss.getSheetByName(SHEET_NAME);
+    const data  = JSON.parse(e.postData.contents);
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    let   sheet = ss.getSheetByName(SHEET_NAME);
 
-    // Create sheet with headers if it doesn't exist yet
+    // Create sheet with headers if it doesn't exist
     if (!sheet) {
       sheet = ss.insertSheet(SHEET_NAME);
       sheet.getRange(1, 1, 1, 6)
@@ -194,15 +215,17 @@ function doPost(e) {
     }
 
     // Duplicate email check
-    const lastRow = sheet.getLastRow();
+    const lastRow  = sheet.getLastRow();
     const existing = lastRow > 1
-      ? sheet.getRange(2, 3, lastRow - 1, 1).getValues().flat().map(v => String(v).toLowerCase())
+      ? sheet.getRange(2, 3, lastRow - 1, 1).getValues().flat()
+             .map(v => String(v).toLowerCase())
       : [];
+
     if (existing.includes(String(data.email).toLowerCase())) {
       return jsonResponse({ status: 'duplicate', message: 'Already subscribed.' });
     }
 
-    // Send welcome email
+    // Try sending welcome email
     let emailSent = 'No';
     try {
       sendWelcomeEmail(data.name, data.email);
@@ -212,7 +235,7 @@ function doPost(e) {
       Logger.log('Email error: ' + emailErr.toString());
     }
 
-    // Save subscriber row to sheet
+    // Save subscriber row
     sheet.appendRow([
       data.timestamp || new Date().toISOString(),
       data.name    || '',
@@ -230,18 +253,17 @@ function doPost(e) {
   }
 }
 
-// ── Send welcome email via Zoho Mail API (OAuth) ───────────────
+
+// ── Send welcome email via Zoho Mail API ──────────────────────
 function sendWelcomeEmail(name, email) {
-  const firstName  = name ? String(name).split(' ')[0] : 'there';
-  const zAcc       = getSecret('ZOHO_ACCOUNT_ID');
-  const zEmail     = getSecret('ZOHO_EMAIL');
-  const authToken  = getAccessToken(); // auto-refreshes if expired
+  const firstName = name ? String(name).split(' ')[0] : 'there';
+  const zAcc      = getSecret('ZOHO_ACCOUNT_ID');
+  const zEmail    = getSecret('ZOHO_EMAIL');
+  const authToken = getAccessToken();
 
   const url = ZOHO_API_URL + '/api/accounts/' + zAcc + '/messages';
-  Logger.log('Sending to URL: ' + url);
-  Logger.log('From: ' + zEmail + ' | To: ' + email + ' | Account: ' + zAcc);
+  Logger.log('Sending to: ' + email + ' | Account: ' + zAcc);
 
-  // Only the 4 fields Zoho accepts
   const payload = {
     fromAddress: zEmail,
     toAddress:   email,
@@ -250,10 +272,10 @@ function sendWelcomeEmail(name, email) {
   };
 
   const res = UrlFetchApp.fetch(url, {
-    method:      'POST',
-    contentType: 'application/json',
-    headers:     { 'Authorization': 'Zoho-oauthtoken ' + authToken },
-    payload:     JSON.stringify(payload),
+    method:             'POST',
+    contentType:        'application/json',
+    headers:            { 'Authorization': 'Zoho-oauthtoken ' + authToken },
+    payload:            JSON.stringify(payload),
     muteHttpExceptions: true
   });
 
@@ -264,6 +286,7 @@ function sendWelcomeEmail(name, email) {
     throw new Error('Zoho API Error ' + code + ': ' + res.getContentText());
   }
 }
+
 
 // ── Build HTML welcome email ───────────────────────────────────
 function buildWelcomeEmailHtml(firstName) {
@@ -301,11 +324,14 @@ function buildWelcomeEmailHtml(firstName) {
     + '</div></body></html>';
 }
 
+
 // ── Helpers ───────────────────────────────────────────────────
 function jsonResponse(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 function doGet() {
-  return jsonResponse({ status: 'active', service: '31stFile Newsletter API v4' });
+  return jsonResponse({ status: 'active', service: '31stFile Newsletter API' });
 }
